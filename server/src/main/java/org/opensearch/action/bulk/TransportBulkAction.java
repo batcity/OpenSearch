@@ -593,6 +593,13 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         protected void doRun() {
             assert bulkRequest != null;
             final ClusterState clusterState = observer.setAndGetObservedState();
+
+            try {
+                Thread.sleep(30000); // 30 seconds
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
