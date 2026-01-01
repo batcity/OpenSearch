@@ -34,6 +34,7 @@ package org.opensearch.action.bulk;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.SparseFixedBitSet;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchParseException;
@@ -47,6 +48,7 @@ import org.opensearch.action.admin.indices.create.AutoCreateAction;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.admin.indices.stats.DocStatusStats;
+import org.opensearch.action.bulk.TransportBulkAction.ConcreteIndices;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.ingest.IngestActionForwarder;
 import org.opensearch.action.support.ActionFilters;
@@ -603,8 +605,15 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
-            final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
-            Metadata metadata = clusterState.metadata();
+            // final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
+
+            final ConcreteIndices concreteIndices = ConcreteIndices.create(
+                clusterState.metadata(),
+                indexNameExpressionResolver
+            );
+            Metadata metadata = concreteIndices.metadata();
+
+            // Metadata metadata = clusterState.metadata();
             // go over all the requests and create a ShardId -> Operations mapping
             Map<ShardId, List<BulkItemRequest>> requestsByShard = new HashMap<>();
             for (int i = 0; i < bulkRequest.requests.size(); i++) {
@@ -624,7 +633,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     continue;
                 }
 
-                Index concreteIndex = concreteIndices.resolveIfAbsent(docWriteRequest);
+                Index concreteIndex = concreteIndices.resolveIfAbsent(clusterState, docWriteRequest);
                 try {
                     // The ConcreteIndices#resolveIfAbsent(...) method validates via IndexNameExpressionResolver whether
                     // an operation is allowed in index into a data stream, but this isn't done when resolve call is cached, so
@@ -937,26 +946,109 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
      *
      * @opensearch.internal
      */
-    static class ConcreteIndices {
-        private final ClusterState state;
-        private final IndexNameExpressionResolver indexNameExpressionResolver;
-        private final Map<String, Index> indices = new HashMap<>();
+    // static class ConcreteIndices {
 
-        ConcreteIndices(ClusterState state, IndexNameExpressionResolver indexNameExpressionResolver) {
-            this.state = state;
-            this.indexNameExpressionResolver = indexNameExpressionResolver;
+    //     private final ClusterState state;
+    //     private final IndexNameExpressionResolver indexNameExpressionResolver;
+    //     private final Map<String, Index> indices = new HashMap<>();
+
+    //     ConcreteIndices(ClusterState state, IndexNameExpressionResolver indexNameExpressionResolver) {
+    //         this.state = state;
+    //         this.indexNameExpressionResolver = indexNameExpressionResolver;
+
+    //         // 🔍 ALWAYS PRINT (old behavior)
+    //         System.out.println(
+    //             "[ConcreteIndices-OLD] created; approx retained size = "
+    //                 + estimateSize(this)
+    //                 + " bytes"
+    //         );
+    //     }
+
+    //     Index getConcreteIndex(String indexOrAlias) {
+    //         return indices.get(indexOrAlias);
+    //     }
+
+    //     Index resolveIfAbsent(DocWriteRequest<?> request) {
+    //         Index concreteIndex = indices.get(request.index());
+    //         if (concreteIndex == null) {
+    //             boolean includeDataStreams = request.opType() == DocWriteRequest.OpType.CREATE;
+    //             try {
+    //                 concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
+    //                     state,
+    //                     request.indicesOptions(),
+    //                     request.indices()[0],
+    //                     false,
+    //                     includeDataStreams
+    //                 );
+    //             } catch (IndexNotFoundException e) {
+    //                 if (includeDataStreams == false && e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
+    //                     throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
+    //                 } else {
+    //                     throw e;
+    //                 }
+    //             }
+    //             indices.put(request.index(), concreteIndex);
+    //         }
+    //         return concreteIndex;
+    //     }
+
+    //     // 🔧 VERY SIMPLE retained-size estimate (same spirit as new code)
+    //     static long estimateSize(ConcreteIndices ci) {
+    //         long size = 0;
+
+    //         size += 64L;                     // ConcreteIndices object
+    //         size += 48L;                     // HashMap
+    //         size += ci.indices.size() * 128; // cached entries
+
+    //         // 🔥 Correct API for arbitrary objects
+    //         size += RamUsageEstimator.sizeOfObject(ci.state);
+
+    //         return size;
+    //     }
+    // }
+
+
+    static final class ConcreteIndices {
+
+        private final Metadata metadata;
+        private final IndexNameExpressionResolver resolver;
+        private final Map<String, Index> cache = new HashMap<>();
+
+        private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver resolver) {
+            this.metadata = metadata;
+            this.resolver = resolver;
+        }
+
+        static ConcreteIndices create(
+            Metadata metadata,
+            IndexNameExpressionResolver resolver
+        ) {
+            ConcreteIndices ci = new ConcreteIndices(metadata, resolver);
+
+            System.out.println(
+                "[ConcreteIndices-NEW] created; approx retained size = "
+                    + estimateSize(ci)
+                    + " bytes"
+            );
+
+            return ci;
+        }
+
+        Metadata metadata() {
+            return metadata;
         }
 
         Index getConcreteIndex(String indexOrAlias) {
-            return indices.get(indexOrAlias);
+            return cache.get(indexOrAlias);
         }
 
-        Index resolveIfAbsent(DocWriteRequest<?> request) {
-            Index concreteIndex = indices.get(request.index());
+        Index resolveIfAbsent(ClusterState state, DocWriteRequest<?> request) {
+            Index concreteIndex = cache.get(request.index());
             if (concreteIndex == null) {
-                boolean includeDataStreams = request.opType() == DocWriteRequest.OpType.CREATE;
+                boolean includeDataStreams =
+                    request.opType() == DocWriteRequest.OpType.CREATE;
                 try {
-                    concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
+                    concreteIndex = resolver.concreteWriteIndex(
                         state,
                         request.indicesOptions(),
                         request.indices()[0],
@@ -964,15 +1056,27 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         includeDataStreams
                     );
                 } catch (IndexNotFoundException e) {
-                    if (includeDataStreams == false && e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
-                        throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
-                    } else {
-                        throw e;
+                    if (!includeDataStreams &&
+                        e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
+                        throw new IllegalArgumentException(
+                            "only write ops with an op_type of create are allowed in data streams"
+                        );
                     }
+                    throw e;
                 }
-                indices.put(request.index(), concreteIndex);
+                cache.put(request.index(), concreteIndex);
             }
             return concreteIndex;
+        }
+
+        static long estimateSize(ConcreteIndices ci) {
+            long size = 0;
+            size += 64L;
+            size += 48L;
+            size += ci.cache.size() * 128L;
+            size += RamUsageEstimator.sizeOfObject(ci.metadata);
+            size += RamUsageEstimator.sizeOfObject(ci.cache);
+            return size;
         }
     }
 
