@@ -636,7 +636,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 Index concreteIndex = concreteIndices.resolveIfAbsent(clusterState, docWriteRequest);
                 try {
                     // The ConcreteIndices#resolveIfAbsent(...) method validates via IndexNameExpressionResolver whether
-                    // an operation is allowed in index into a data stream, but this isn't done when resolve call is cached, so
+                    // an operation is allowed in index into a data stream, but this isn't done when resolve call is indicesd, so
                     // the validation needs to be performed here too.
                     IndexAbstraction indexAbstraction = clusterState.getMetadata().getIndicesLookup().get(concreteIndex.getName());
                     if (indexAbstraction.getParentDataStream() != null &&
@@ -1000,7 +1000,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
     //         size += 64L;                     // ConcreteIndices object
     //         size += 48L;                     // HashMap
-    //         size += ci.indices.size() * 128; // cached entries
+    //         size += ci.indices.size() * 128; // indicesd entries
 
     //         // 🔥 Correct API for arbitrary objects
     //         size += RamUsageEstimator.sizeOfObject(ci.state);
@@ -1014,7 +1014,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
         private final Metadata metadata;
         private final IndexNameExpressionResolver resolver;
-        private final Map<String, Index> cache = new HashMap<>();
+        private final Map<String, Index> indices = new HashMap<>();
 
         private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver resolver) {
             this.metadata = metadata;
@@ -1041,11 +1041,11 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         }
 
         Index getConcreteIndex(String indexOrAlias) {
-            return cache.get(indexOrAlias);
+            return indices.get(indexOrAlias);
         }
 
         Index resolveIfAbsent(ClusterState state, DocWriteRequest<?> request) {
-            Index concreteIndex = cache.get(request.index());
+            Index concreteIndex = indices.get(request.index());
             if (concreteIndex == null) {
                 boolean includeDataStreams =
                     request.opType() == DocWriteRequest.OpType.CREATE;
@@ -1066,7 +1066,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     }
                     throw e;
                 }
-                cache.put(request.index(), concreteIndex);
+                indices.put(request.index(), concreteIndex);
             }
             return concreteIndex;
         }
@@ -1075,9 +1075,9 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             long size = 0;
             size += 64L;
             size += 48L;
-            size += ci.cache.size() * 128L;
+            size += ci.indices.size() * 128L;
             size += RamUsageEstimator.sizeOfObject(ci.metadata);
-            size += RamUsageEstimator.sizeOfObject(ci.cache);
+            size += RamUsageEstimator.sizeOfObject(ci.indices);
             return size;
         }
     }
