@@ -626,10 +626,10 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 if (addFailureIfRequiresAliasAndAliasIsMissing(docWriteRequest, i, metadata)) {
                     continue;
                 }
-                if (addFailureIfIndexIsUnavailable(docWriteRequest, i, concreteIndices, metadata)) {
+                if (addFailureIfIndexIsUnavailable(clusterState, docWriteRequest, i, concreteIndices, metadata)) {
                     continue;
                 }
-                if (addFailureIfAppendOnlyIndexAndOpsDeleteOrUpdate(docWriteRequest, i, concreteIndices, metadata)) {
+                if (addFailureIfAppendOnlyIndexAndOpsDeleteOrUpdate(clusterState, docWriteRequest, i, concreteIndices, metadata)) {
                     continue;
                 }
 
@@ -837,12 +837,13 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         }
 
         private boolean addFailureIfAppendOnlyIndexAndOpsDeleteOrUpdate(
+            ClusterState clusterstate,
             DocWriteRequest<?> request,
             int idx,
             final ConcreteIndices concreteIndices,
             Metadata metadata
         ) {
-            Index concreteIndex = concreteIndices.resolveIfAbsent(request);
+            Index concreteIndex = concreteIndices.resolveIfAbsent(clusterstate, request);
             final IndexMetadata indexMetadata = metadata.index(concreteIndex);
             if (indexMetadata.isAppendOnlyIndex()) {
                 if ((request.opType() == DocWriteRequest.OpType.UPDATE || request.opType() == DocWriteRequest.OpType.DELETE)) {
@@ -890,6 +891,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         }
 
         private boolean addFailureIfIndexIsUnavailable(
+            ClusterState clusterstate,
             DocWriteRequest<?> request,
             int idx,
             final ConcreteIndices concreteIndices,
@@ -903,7 +905,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             Index concreteIndex = concreteIndices.getConcreteIndex(request.index());
             if (concreteIndex == null) {
                 try {
-                    concreteIndex = concreteIndices.resolveIfAbsent(request);
+                    concreteIndex = concreteIndices.resolveIfAbsent(clusterstate, request);
                 } catch (IndexClosedException | IndexNotFoundException | IllegalArgumentException ex) {
                     addFailure(request, idx, ex);
                     return true;
