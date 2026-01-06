@@ -596,12 +596,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             assert bulkRequest != null;
             final ClusterState clusterState = observer.setAndGetObservedState();
 
-            try {
-                Thread.sleep(30000); // 30 seconds
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
@@ -612,6 +606,16 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 indexNameExpressionResolver
             );
             Metadata metadata = concreteIndices.metadata();
+
+
+            try {
+                System.out.println("I'm currently sleeping for 30 seconds....");
+                Thread.sleep(30000); // 30 seconds
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            System.out.println("I just woke up....");
 
             // Metadata metadata = clusterState.metadata();
             // go over all the requests and create a ShardId -> Operations mapping
