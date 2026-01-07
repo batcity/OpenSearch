@@ -34,7 +34,6 @@ package org.opensearch.action.bulk;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.SparseFixedBitSet;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchParseException;
@@ -950,25 +949,19 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
     static final class ConcreteIndices {
 
         private final Metadata metadata;
-        private final IndexNameExpressionResolver resolver;
+        private final IndexNameExpressionResolver indexNameExpressionResolver;
         private final Map<String, Index> indices = new HashMap<>();
 
-        private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver resolver) {
+        private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver indexNameExpressionResolver) {
             this.metadata = metadata;
-            this.resolver = resolver;
+            this.indexNameExpressionResolver = indexNameExpressionResolver;
         }
 
         static ConcreteIndices create(
             Metadata metadata,
-            IndexNameExpressionResolver resolver
+            IndexNameExpressionResolver indexNameExpressionResolver
         ) {
-            ConcreteIndices ci = new ConcreteIndices(metadata, resolver);
-
-            System.out.println(
-                "[ConcreteIndices-NEW] created; approx retained size = "
-                    + estimateSize(ci)
-                    + " bytes"
-            );
+            ConcreteIndices ci = new ConcreteIndices(metadata, indexNameExpressionResolver);
 
             return ci;
         }
@@ -987,7 +980,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 boolean includeDataStreams =
                     request.opType() == DocWriteRequest.OpType.CREATE;
                 try {
-                    concreteIndex = resolver.concreteWriteIndex(
+                    concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
                         state,
                         request.indicesOptions(),
                         request.indices()[0],
@@ -1006,16 +999,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 indices.put(request.index(), concreteIndex);
             }
             return concreteIndex;
-        }
-
-        static long estimateSize(ConcreteIndices ci) {
-            long size = 0;
-            size += 64L;
-            size += 48L;
-            size += ci.indices.size() * 128L;
-            size += RamUsageEstimator.sizeOfObject(ci.metadata);
-            size += RamUsageEstimator.sizeOfObject(ci.indices);
-            return size;
         }
     }
 
