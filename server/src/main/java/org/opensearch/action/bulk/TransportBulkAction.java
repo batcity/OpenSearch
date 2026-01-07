@@ -34,7 +34,6 @@ package org.opensearch.action.bulk;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.SparseFixedBitSet;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchParseException;
@@ -978,6 +977,69 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             }
             return concreteIndex;
         }
+    }
+
+    private long relativeTime() {
+        return relativeTimeProvider.getAsLong();
+    }
+
+    private void processBulkIndexIngestRequest(
+        Task task,
+        BulkRequest original,
+        String executorName,
+        ActionListener<BulkResponse> listener
+    ) {
+        final long ingestStartTimeInNanos = System.nanoTime();
+        final BulkRequestModifier bulkRequestModifier = new BulkRequestModifier(original);
+        ingestService.executeBulkRequest(
+            original.numberOfActions(),
+            () -> bulkRequestModifier,
+            bulkRequestModifier::markItemAsFailed,
+            (originalThread, exception) -> {
+                if (exception != null) {
+                    logger.debug("failed to execute pipeline for a bulk request", exception);
+                    listener.onFailure(exception);
+                } else {
+                    long ingestTookInMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - ingestStartTimeInNanos);
+                    BulkRequest bulkRequest = bulkRequestModifier.getBulkRequest();
+                    ActionListener<BulkResponse> actionListener = bulkRequestModifier.wrapActionListenerIfNeeded(
+                        ingestTookInMillis,
+                        listener
+                    );
+                    if (bulkRequest.requests().isEmpty()) {
+                        // at this stage, the transport bulk action can't deal with a bulk request with no requests,
+                        // so we stop and send an empty response back to the client.
+                        // (this will happen if pre-processing all items in the bulk failed)
+                        actionListener.onResponse(new BulkResponse(new BulkItemResponse[0], 0));
+                    } else {
+                        // If a processor went async and returned a response on a different thread then
+                        // before we continue the bulk request we should fork back on a write thread:
+                        if (originalThread == Thread.currentThread()) {
+                            assert Thread.currentThread().getName().contains(executorName);
+                            doInternalExecute(task, bulkRequest, executorName, actionListener);
+                        } else {
+                            threadPool.executor(executorName).execute(new ActionRunnable<BulkResponse>(listener) {
+                                @Override
+                                protected void doRun() {
+                                    doInternalExecute(task, bulkRequest, executorName, actionListener);
+                                }
+
+                                @Override
+                                public boolean isForceExecution() {
+                                    // If we fork back to a write thread we **not** should fail, because tp queue is full.
+                                    // (Otherwise the work done during ingest will be lost)
+                                    // It is okay to force execution here. Throttling of write requests happens prior to
+                                    // ingest when a node receives a bulk request.
+                                    return true;
+                                }
+                            });
+                        }
+                    }
+                }
+            },
+            bulkRequestModifier::markItemAsDropped,
+            executorName
+        );
     }
 
     /**
