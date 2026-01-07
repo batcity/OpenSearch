@@ -596,24 +596,18 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             assert bulkRequest != null;
             final ClusterState clusterState = observer.setAndGetObservedState();
 
+            if (handleBlockExceptions(clusterState)) {
+                return;
+            }
+            final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
+
             try {
                 Thread.sleep(30000); // 30 seconds
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
 
-            if (handleBlockExceptions(clusterState)) {
-                return;
-            }
-            // final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
-
-            final ConcreteIndices concreteIndices = ConcreteIndices.create(
-                clusterState.metadata(),
-                indexNameExpressionResolver
-            );
-            Metadata metadata = concreteIndices.metadata();
-
-            // Metadata metadata = clusterState.metadata();
+            Metadata metadata = clusterState.metadata();
             // go over all the requests and create a ShardId -> Operations mapping
             Map<ShardId, List<BulkItemRequest>> requestsByShard = new HashMap<>();
             for (int i = 0; i < bulkRequest.requests.size(); i++) {
@@ -633,7 +627,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     continue;
                 }
 
-                Index concreteIndex = concreteIndices.resolveIfAbsent(clusterState, docWriteRequest);
+                Index concreteIndex = concreteIndices.resolveIfAbsent(docWriteRequest);
                 try {
                     // The ConcreteIndices#resolveIfAbsent(...) method validates via IndexNameExpressionResolver whether
                     // an operation is allowed in index into a data stream, but this isn't done when resolve call is cached, so
@@ -946,109 +940,27 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
      *
      * @opensearch.internal
      */
-    // static class ConcreteIndices {
+    static class ConcreteIndices {
 
-    //     private final ClusterState state;
-    //     private final IndexNameExpressionResolver indexNameExpressionResolver;
-    //     private final Map<String, Index> indices = new HashMap<>();
+        private final ClusterState state;
+        private final IndexNameExpressionResolver indexNameExpressionResolver;
+        private final Map<String, Index> indices = new HashMap<>();
 
-    //     ConcreteIndices(ClusterState state, IndexNameExpressionResolver indexNameExpressionResolver) {
-    //         this.state = state;
-    //         this.indexNameExpressionResolver = indexNameExpressionResolver;
-
-    //         // 🔍 ALWAYS PRINT (old behavior)
-    //         System.out.println(
-    //             "[ConcreteIndices-OLD] created; approx retained size = "
-    //                 + estimateSize(this)
-    //                 + " bytes"
-    //         );
-    //     }
-
-    //     Index getConcreteIndex(String indexOrAlias) {
-    //         return indices.get(indexOrAlias);
-    //     }
-
-    //     Index resolveIfAbsent(DocWriteRequest<?> request) {
-    //         Index concreteIndex = indices.get(request.index());
-    //         if (concreteIndex == null) {
-    //             boolean includeDataStreams = request.opType() == DocWriteRequest.OpType.CREATE;
-    //             try {
-    //                 concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
-    //                     state,
-    //                     request.indicesOptions(),
-    //                     request.indices()[0],
-    //                     false,
-    //                     includeDataStreams
-    //                 );
-    //             } catch (IndexNotFoundException e) {
-    //                 if (includeDataStreams == false && e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
-    //                     throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
-    //                 } else {
-    //                     throw e;
-    //                 }
-    //             }
-    //             indices.put(request.index(), concreteIndex);
-    //         }
-    //         return concreteIndex;
-    //     }
-
-    //     // 🔧 VERY SIMPLE retained-size estimate (same spirit as new code)
-    //     static long estimateSize(ConcreteIndices ci) {
-    //         long size = 0;
-
-    //         size += 64L;                     // ConcreteIndices object
-    //         size += 48L;                     // HashMap
-    //         size += ci.indices.size() * 128; // cached entries
-
-    //         // 🔥 Correct API for arbitrary objects
-    //         size += RamUsageEstimator.sizeOfObject(ci.state);
-
-    //         return size;
-    //     }
-    // }
-
-
-    static final class ConcreteIndices {
-
-        private final Metadata metadata;
-        private final IndexNameExpressionResolver resolver;
-        private final Map<String, Index> cache = new HashMap<>();
-
-        private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver resolver) {
-            this.metadata = metadata;
-            this.resolver = resolver;
-        }
-
-        static ConcreteIndices create(
-            Metadata metadata,
-            IndexNameExpressionResolver resolver
-        ) {
-            ConcreteIndices ci = new ConcreteIndices(metadata, resolver);
-
-            System.out.println(
-                "[ConcreteIndices-NEW] created; approx retained size = "
-                    + estimateSize(ci)
-                    + " bytes"
-            );
-
-            return ci;
-        }
-
-        Metadata metadata() {
-            return metadata;
+        ConcreteIndices(ClusterState state, IndexNameExpressionResolver indexNameExpressionResolver) {
+            this.state = state;
+            this.indexNameExpressionResolver = indexNameExpressionResolver;
         }
 
         Index getConcreteIndex(String indexOrAlias) {
-            return cache.get(indexOrAlias);
+            return indices.get(indexOrAlias);
         }
 
-        Index resolveIfAbsent(ClusterState state, DocWriteRequest<?> request) {
-            Index concreteIndex = cache.get(request.index());
+        Index resolveIfAbsent(DocWriteRequest<?> request) {
+            Index concreteIndex = indices.get(request.index());
             if (concreteIndex == null) {
-                boolean includeDataStreams =
-                    request.opType() == DocWriteRequest.OpType.CREATE;
+                boolean includeDataStreams = request.opType() == DocWriteRequest.OpType.CREATE;
                 try {
-                    concreteIndex = resolver.concreteWriteIndex(
+                    concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
                         state,
                         request.indicesOptions(),
                         request.indices()[0],
@@ -1056,91 +968,16 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         includeDataStreams
                     );
                 } catch (IndexNotFoundException e) {
-                    if (!includeDataStreams &&
-                        e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
-                        throw new IllegalArgumentException(
-                            "only write ops with an op_type of create are allowed in data streams"
-                        );
+                    if (includeDataStreams == false && e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
+                        throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
+                    } else {
+                        throw e;
                     }
-                    throw e;
                 }
-                cache.put(request.index(), concreteIndex);
+                indices.put(request.index(), concreteIndex);
             }
             return concreteIndex;
         }
-
-        static long estimateSize(ConcreteIndices ci) {
-            long size = 0;
-            size += 64L;
-            size += 48L;
-            size += ci.cache.size() * 128L;
-            size += RamUsageEstimator.sizeOfObject(ci.metadata);
-            size += RamUsageEstimator.sizeOfObject(ci.cache);
-            return size;
-        }
-    }
-
-    private long relativeTime() {
-        return relativeTimeProvider.getAsLong();
-    }
-
-    private void processBulkIndexIngestRequest(
-        Task task,
-        BulkRequest original,
-        String executorName,
-        ActionListener<BulkResponse> listener
-    ) {
-        final long ingestStartTimeInNanos = System.nanoTime();
-        final BulkRequestModifier bulkRequestModifier = new BulkRequestModifier(original);
-        ingestService.executeBulkRequest(
-            original.numberOfActions(),
-            () -> bulkRequestModifier,
-            bulkRequestModifier::markItemAsFailed,
-            (originalThread, exception) -> {
-                if (exception != null) {
-                    logger.debug("failed to execute pipeline for a bulk request", exception);
-                    listener.onFailure(exception);
-                } else {
-                    long ingestTookInMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - ingestStartTimeInNanos);
-                    BulkRequest bulkRequest = bulkRequestModifier.getBulkRequest();
-                    ActionListener<BulkResponse> actionListener = bulkRequestModifier.wrapActionListenerIfNeeded(
-                        ingestTookInMillis,
-                        listener
-                    );
-                    if (bulkRequest.requests().isEmpty()) {
-                        // at this stage, the transport bulk action can't deal with a bulk request with no requests,
-                        // so we stop and send an empty response back to the client.
-                        // (this will happen if pre-processing all items in the bulk failed)
-                        actionListener.onResponse(new BulkResponse(new BulkItemResponse[0], 0));
-                    } else {
-                        // If a processor went async and returned a response on a different thread then
-                        // before we continue the bulk request we should fork back on a write thread:
-                        if (originalThread == Thread.currentThread()) {
-                            assert Thread.currentThread().getName().contains(executorName);
-                            doInternalExecute(task, bulkRequest, executorName, actionListener);
-                        } else {
-                            threadPool.executor(executorName).execute(new ActionRunnable<BulkResponse>(listener) {
-                                @Override
-                                protected void doRun() {
-                                    doInternalExecute(task, bulkRequest, executorName, actionListener);
-                                }
-
-                                @Override
-                                public boolean isForceExecution() {
-                                    // If we fork back to a write thread we **not** should fail, because tp queue is full.
-                                    // (Otherwise the work done during ingest will be lost)
-                                    // It is okay to force execution here. Throttling of write requests happens prior to
-                                    // ingest when a node receives a bulk request.
-                                    return true;
-                                }
-                            });
-                        }
-                    }
-                }
-            },
-            bulkRequestModifier::markItemAsDropped,
-            executorName
-        );
     }
 
     /**
