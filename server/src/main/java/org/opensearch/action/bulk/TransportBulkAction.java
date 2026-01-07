@@ -597,11 +597,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
-
             final ConcreteIndices concreteIndices = new ConcreteIndices(indexNameExpressionResolver);
-
-            System.out.println("I just woke up....");
-
             Metadata metadata = clusterState.metadata();
             // go over all the requests and create a ShardId -> Operations mapping
             Map<ShardId, List<BulkItemRequest>> requestsByShard = new HashMap<>();
