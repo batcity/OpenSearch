@@ -251,6 +251,13 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         final Metadata metadata = clusterService.state().getMetadata();
         final Version minNodeVersion = clusterService.state().getNodes().getMinNodeVersion();
 
+        try {
+            System.out.println("I'm currently sleeping for 30 seconds in the doInternalStep....");
+            Thread.sleep(30000); // 30 seconds
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
         // Determine if any requests require ingest pipeline execution.
         boolean hasIndexRequestsWithPipelines = resolvePipelinesForActionRequests(bulkRequest.requests, metadata, minNodeVersion);
 
@@ -606,10 +613,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 return;
             }
 
-            final ConcreteIndices concreteIndices = ConcreteIndices.create(
-                clusterState.metadata(),
-                indexNameExpressionResolver
-            );
+            final ConcreteIndices concreteIndices = ConcreteIndices.create(indexNameExpressionResolver);
 
             try {
                 System.out.println("I'm currently sleeping for 30 seconds....");
@@ -957,26 +961,17 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
      */
     static final class ConcreteIndices {
 
-        private final Metadata metadata;
         private final IndexNameExpressionResolver indexNameExpressionResolver;
         private final Map<String, Index> indices = new HashMap<>();
 
-        private ConcreteIndices(Metadata metadata, IndexNameExpressionResolver indexNameExpressionResolver) {
-            this.metadata = metadata;
+        private ConcreteIndices(IndexNameExpressionResolver indexNameExpressionResolver) {
             this.indexNameExpressionResolver = indexNameExpressionResolver;
         }
 
-        static ConcreteIndices create(
-            Metadata metadata,
-            IndexNameExpressionResolver indexNameExpressionResolver
-        ) {
-            ConcreteIndices ci = new ConcreteIndices(metadata, indexNameExpressionResolver);
+        static ConcreteIndices create(IndexNameExpressionResolver indexNameExpressionResolver) {
+            ConcreteIndices ci = new ConcreteIndices(indexNameExpressionResolver);
 
             return ci;
-        }
-
-        Metadata metadata() {
-            return metadata;
         }
 
         Index getConcreteIndex(String indexOrAlias) {
