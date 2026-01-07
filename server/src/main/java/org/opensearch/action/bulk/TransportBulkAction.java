@@ -977,8 +977,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         Index resolveIfAbsent(ClusterState state, DocWriteRequest<?> request) {
             Index concreteIndex = indices.get(request.index());
             if (concreteIndex == null) {
-                boolean includeDataStreams =
-                    request.opType() == DocWriteRequest.OpType.CREATE;
+                boolean includeDataStreams = request.opType() == DocWriteRequest.OpType.CREATE;
                 try {
                     concreteIndex = indexNameExpressionResolver.concreteWriteIndex(
                         state,
@@ -988,11 +987,8 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         includeDataStreams
                     );
                 } catch (IndexNotFoundException e) {
-                    if (!includeDataStreams &&
-                        e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
-                        throw new IllegalArgumentException(
-                            "only write ops with an op_type of create are allowed in data streams"
-                        );
+                    if (!includeDataStreams && e.getMetadataKeys().contains(EXCLUDED_DATA_STREAMS_KEY)) {
+                        throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
                     }
                     throw e;
                 }
