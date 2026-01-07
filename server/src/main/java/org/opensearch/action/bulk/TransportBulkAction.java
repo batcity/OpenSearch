@@ -598,7 +598,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 return;
             }
 
-            final ConcreteIndices concreteIndices = ConcreteIndices.create(indexNameExpressionResolver);
+            final ConcreteIndices concreteIndices = new ConcreteIndices(indexNameExpressionResolver);
 
             System.out.println("I just woke up....");
 
@@ -944,12 +944,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
         private ConcreteIndices(IndexNameExpressionResolver indexNameExpressionResolver) {
             this.indexNameExpressionResolver = indexNameExpressionResolver;
-        }
-
-        static ConcreteIndices create(IndexNameExpressionResolver indexNameExpressionResolver) {
-            ConcreteIndices ci = new ConcreteIndices(indexNameExpressionResolver);
-
-            return ci;
         }
 
         Index getConcreteIndex(String indexOrAlias) {
