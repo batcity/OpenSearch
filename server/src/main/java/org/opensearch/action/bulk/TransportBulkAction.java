@@ -592,7 +592,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         @Override
         protected void doRun() {
             assert bulkRequest != null;
-
             final ClusterState clusterState = observer.setAndGetObservedState();
             if (handleBlockExceptions(clusterState)) {
                 return;
