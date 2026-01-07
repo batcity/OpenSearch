@@ -251,13 +251,6 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         final Metadata metadata = clusterService.state().getMetadata();
         final Version minNodeVersion = clusterService.state().getNodes().getMinNodeVersion();
 
-        try {
-            System.out.println("I'm currently sleeping for 30 seconds in the doInternalStep....");
-            Thread.sleep(30000); // 30 seconds
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
         // Determine if any requests require ingest pipeline execution.
         boolean hasIndexRequestsWithPipelines = resolvePipelinesForActionRequests(bulkRequest.requests, metadata, minNodeVersion);
 
@@ -600,27 +593,12 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         protected void doRun() {
             assert bulkRequest != null;
 
-            try {
-                System.out.println("I'm currently sleeping for 30 seconds before the cluster state is retrieved....");
-                Thread.sleep(30000); // 30 seconds
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
-
             final ClusterState clusterState = observer.setAndGetObservedState();
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
 
             final ConcreteIndices concreteIndices = ConcreteIndices.create(indexNameExpressionResolver);
-
-            try {
-                System.out.println("I'm currently sleeping for 30 seconds....");
-                Thread.sleep(30000); // 30 seconds
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
 
             System.out.println("I just woke up....");
 
