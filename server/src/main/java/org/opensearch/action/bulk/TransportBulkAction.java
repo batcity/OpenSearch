@@ -592,18 +592,24 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         @Override
         protected void doRun() {
             assert bulkRequest != null;
+
+            try {
+                System.out.println("I'm currently sleeping for 30 seconds before the cluster state is retrieved....");
+                Thread.sleep(30000); // 30 seconds
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+
             final ClusterState clusterState = observer.setAndGetObservedState();
             if (handleBlockExceptions(clusterState)) {
                 return;
             }
-            // final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
 
             final ConcreteIndices concreteIndices = ConcreteIndices.create(
                 clusterState.metadata(),
                 indexNameExpressionResolver
             );
-            Metadata metadata = concreteIndices.metadata();
-
 
             try {
                 System.out.println("I'm currently sleeping for 30 seconds....");
@@ -614,7 +620,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
             System.out.println("I just woke up....");
 
-            // Metadata metadata = clusterState.metadata();
+            Metadata metadata = clusterState.metadata();
             // go over all the requests and create a ShardId -> Operations mapping
             Map<ShardId, List<BulkItemRequest>> requestsByShard = new HashMap<>();
             for (int i = 0; i < bulkRequest.requests.size(); i++) {
