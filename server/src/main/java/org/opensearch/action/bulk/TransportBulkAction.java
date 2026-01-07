@@ -639,7 +639,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 Index concreteIndex = concreteIndices.resolveIfAbsent(clusterState, docWriteRequest);
                 try {
                     // The ConcreteIndices#resolveIfAbsent(...) method validates via IndexNameExpressionResolver whether
-                    // an operation is allowed in index into a data stream, but this isn't done when resolve call is indicesd, so
+                    // an operation is allowed in index into a data stream, but this isn't done when resolve call is cached, so
                     // the validation needs to be performed here too.
                     IndexAbstraction indexAbstraction = clusterState.getMetadata().getIndicesLookup().get(concreteIndex.getName());
                     if (indexAbstraction.getParentDataStream() != null &&
@@ -946,6 +946,11 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         new BulkOperation(task, bulkRequest, listener, responses, startTimeNanos, indicesThatCannotBeCreated).run();
     }
 
+     /**
+     * Concrete indices
+     *
+     * @opensearch.internal
+     */
     static final class ConcreteIndices {
 
         private final Metadata metadata;
