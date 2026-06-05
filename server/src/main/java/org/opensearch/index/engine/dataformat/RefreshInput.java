@@ -10,7 +10,6 @@ package org.opensearch.index.engine.dataformat;
 
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.index.engine.exec.Segment;
-import org.opensearch.index.engine.exec.WriterFileSet;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,11 +21,27 @@ import java.util.List;
  * @opensearch.experimental
  */
 @ExperimentalApi
-public record RefreshInput(List<Segment> existingSegments, List<WriterFileSet> writerFiles) {
+public record RefreshInput(List<Segment> existingSegments, List<Segment> writerFiles, long nextAvailableGeneration) {
+
+    /** Sentinel indicating no spare generation was allocated. */
+    public static final long NO_GENERATION = -1L;
+
+    public RefreshInput(List<Segment> existingSegments, List<Segment> writerFiles) {
+        this(existingSegments, writerFiles, NO_GENERATION);
+    }
 
     public RefreshInput {
         existingSegments = List.copyOf(existingSegments);
         writerFiles = List.copyOf(writerFiles);
+    }
+
+    /**
+     * Whether a spare generation is available for engines that want to merge
+     * multiple writer files into a single segment during refresh.
+     * The engine decides whether to actually use it.
+     */
+    public boolean hasNextGeneration() {
+        return nextAvailableGeneration > 0 && writerFiles.size() > 1;
     }
 
     /**
@@ -44,7 +59,8 @@ public record RefreshInput(List<Segment> existingSegments, List<WriterFileSet> w
     @ExperimentalApi
     public static class Builder {
         private List<Segment> existingSegments = new ArrayList<>();
-        private List<WriterFileSet> writerFiles = new ArrayList<>();
+        private List<Segment> segments = new ArrayList<>();
+        private long nextAvailableGeneration = NO_GENERATION;
 
         private Builder() {}
 
@@ -62,21 +78,25 @@ public record RefreshInput(List<Segment> existingSegments, List<WriterFileSet> w
         /**
          * Adds a writer file set.
          *
-         * @param writerFileSet the writer file set to add
+         * @param segment the segment set to add
          * @return this builder
          */
-        public Builder addWriterFileSet(WriterFileSet writerFileSet) {
-            this.writerFiles.add(writerFileSet);
+        public Builder addSegment(Segment segment) {
+            this.segments.add(segment);
             return this;
         }
 
         /**
-         * Builds an immutable {@link RefreshInput}.
-         *
-         * @return the constructed RefreshInput
+         * Sets the next available generation that the engine may use if it decides
+         * to merge writer files during refresh.
          */
+        public Builder nextAvailableGeneration(long generation) {
+            this.nextAvailableGeneration = generation;
+            return this;
+        }
+
         public RefreshInput build() {
-            return new RefreshInput(existingSegments, writerFiles);
+            return new RefreshInput(existingSegments, segments, nextAvailableGeneration);
         }
     }
 }

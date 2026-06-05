@@ -26,6 +26,9 @@ import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.xcontent.MediaTypeRegistry;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.index.IndexService;
+import org.opensearch.index.engine.dataformat.stub.MockCommitterEnginePlugin;
+import org.opensearch.index.engine.dataformat.stub.MockDataFormatPlugin;
+import org.opensearch.index.engine.dataformat.stub.MockDocumentInput;
 import org.opensearch.plugins.Plugin;
 import org.opensearch.test.InternalSettingsPlugin;
 import org.opensearch.test.OpenSearchSingleNodeTestCase;
@@ -45,7 +48,7 @@ public class ConstantKeywordFieldMapperTests extends OpenSearchSingleNodeTestCas
 
     @Override
     protected Collection<Class<? extends Plugin>> getPlugins() {
-        return pluginList(InternalSettingsPlugin.class);
+        return pluginList(InternalSettingsPlugin.class, MockDataFormatPlugin.class, MockCommitterEnginePlugin.class);
     }
 
     @Before
@@ -191,7 +194,8 @@ public class ConstantKeywordFieldMapperTests extends OpenSearchSingleNodeTestCas
                     "1",
                     BytesReference.bytes(XContentFactory.jsonBuilder().startObject().field("field", "foo").endObject()),
                     MediaTypeRegistry.JSON
-                )
+                ),
+                new MockDocumentInput()
             );
     }
 }

@@ -61,7 +61,7 @@ import static org.opensearch.index.translog.Translog.EMPTY_TRANSLOG_SNAPSHOT;
  */
 public class IngestionEngine extends InternalEngine {
 
-    private StreamPoller streamPoller;
+    private volatile StreamPoller streamPoller;
     private final IngestionConsumerFactory ingestionConsumerFactory;
     private final Supplier<DocumentMapperForType> documentMapperForTypeSupplier;
     private final IngestPipelineExecutor pipelineExecutor;
@@ -95,8 +95,6 @@ public class IngestionEngine extends InternalEngine {
         assert indexMetadata != null;
         IngestionSource ingestionSource = Objects.requireNonNull(indexMetadata.getIngestionSource());
 
-        // initialize the ingestion consumer factory
-        this.ingestionConsumerFactory.initialize(ingestionSource);
         String clientId = engineConfig.getIndexSettings().getNodeName()
             + "-"
             + engineConfig.getIndexSettings().getIndex().getName()
@@ -160,6 +158,7 @@ public class IngestionEngine extends InternalEngine {
             .mapperSettings(ingestionSource.getMapperSettings())
             .pipelineExecutor(pipelineExecutor)
             .warmupConfig(ingestionSource.getWarmupConfig())
+            .ingestionSource(ingestionSource)
             .build();
         registerStreamPollerListener();
 
@@ -526,7 +525,13 @@ public class IngestionEngine extends InternalEngine {
 
     @Override
     public PollingIngestStats pollingIngestStats() {
-        return streamPoller.getStats();
+        PollingIngestStats pollerStats = streamPoller.getStats();
+        // Enrich with pipeline execution metrics from the shared executor
+        return new PollingIngestStats(
+            pollerStats.getMessageProcessorStats(),
+            pollerStats.getConsumerStats(),
+            pipelineExecutor.getMetrics()
+        );
     }
 
     private void registerDynamicIndexSettingsHandlers() {

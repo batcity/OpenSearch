@@ -9,6 +9,8 @@
 package org.opensearch.index.engine;
 
 import org.apache.lucene.index.IndexCommit;
+import org.apache.lucene.store.ByteBuffersDataOutput;
+import org.apache.lucene.store.ByteBuffersIndexOutput;
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.common.concurrent.GatedCloseable;
 import org.opensearch.common.unit.TimeValue;
@@ -16,6 +18,7 @@ import org.opensearch.core.common.unit.ByteSizeValue;
 import org.opensearch.index.VersionType;
 import org.opensearch.index.engine.exec.Indexer;
 import org.opensearch.index.engine.exec.coord.CatalogSnapshot;
+import org.opensearch.index.engine.exec.coord.SegmentInfosCatalogSnapshot;
 import org.opensearch.index.mapper.DocumentMapperForType;
 import org.opensearch.index.mapper.SourceToParse;
 import org.opensearch.index.merge.MergeStats;
@@ -28,6 +31,7 @@ import org.opensearch.search.suggest.completion.CompletionStats;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 
 /**
  * An indexer implementation that uses an engine to perform indexing operations.
@@ -46,6 +50,16 @@ public class EngineBackedIndexer implements Indexer {
     @Override
     public EngineConfig config() {
         return engine.config();
+    }
+
+    /**
+     * Replica detection delegates to the wrapped {@link Engine}: true only when it's an
+     * {@link org.opensearch.index.engine.NRTReplicationEngine}. For non-replica engines
+     * (e.g., {@link org.opensearch.index.engine.InternalEngine}) this returns false.
+     */
+    @Override
+    public boolean isReplicaIndexer() {
+        return engine instanceof NRTReplicationEngine;
     }
 
     @Override
@@ -74,7 +88,7 @@ public class EngineBackedIndexer implements Indexer {
     }
 
     @Override
-    public long getIndexBufferRAMBytesUsed() {
+    public long getHeapBytesUsed() {
         return engine.getIndexBufferRAMBytesUsed();
     }
 
@@ -240,6 +254,16 @@ public class EngineBackedIndexer implements Indexer {
     }
 
     @Override
+    public GatedCloseable<CatalogSnapshot> acquireSafeCatalogSnapshot() throws EngineException {
+        return engine.acquireSafeCatalogSnapshot();
+    }
+
+    @Override
+    public GatedCloseable<CatalogSnapshot> acquireLastCommittedSnapshot(boolean flushFirst) throws EngineException, IOException {
+        return engine.acquireLastCommittedSnapshot(flushFirst);
+    }
+
+    @Override
     public long getPersistedLocalCheckpoint() {
         return engine.getPersistedLocalCheckpoint();
     }
@@ -277,6 +301,11 @@ public class EngineBackedIndexer implements Indexer {
     @Override
     public SegmentsStats segmentsStats(boolean includeSegmentFileSizes, boolean includeUnloadedSegments) {
         return engine.segmentsStats(includeSegmentFileSizes, includeUnloadedSegments);
+    }
+
+    @Override
+    public List<Segment> segments(boolean verbose) {
+        return engine.segments(verbose);
     }
 
     @Override
@@ -370,21 +399,53 @@ public class EngineBackedIndexer implements Indexer {
         return Indexer.super.currentOngoingRefreshCheckpoint();
     }
 
+    /** Engine-backed indexer uses only JVM heap for indexing buffers, no native memory. */
     @Override
     public long getNativeBytesUsed() {
-        return Indexer.super.getNativeBytesUsed();
+        return 0;
     }
 
     /**
-     * Returns a snapshot of the catalog of segments in this engine. This snapshot is
-     * guaranteed to be consistent and can be used for recovery purposes.
+     * Applies received segment state to the replica engine. This indexer only wraps Lucene-backed
+     * shards, so any other engine/snapshot combination is a wiring bug.
+     */
+    @Override
+    public void finalizeReplication(CatalogSnapshot catalogSnapshot) throws IOException {
+        if (engine instanceof NRTReplicationEngine nrtEngine && catalogSnapshot instanceof SegmentInfosCatalogSnapshot siSnapshot) {
+            nrtEngine.updateSegments(siSnapshot.getSegmentInfos());
+        } else {
+            throw new IllegalStateException(
+                "EngineBackedIndexer.finalizeReplication expected NRTReplicationEngine + SegmentInfosCatalogSnapshot, got engine="
+                    + engine.getClass().getName()
+                    + ", snapshot="
+                    + catalogSnapshot.getClass().getName()
+            );
+        }
+    }
+
+    /**
+     * Returns a snapshot of the catalog of segments in this engine. Delegates to
+     * {@link Engine#acquireSnapshot()} so subclasses (e.g. the read-only wrapper used during
+     * engine reset) can route to a different snapshot source without going through the
+     * {@link Engine#getSegmentInfosSnapshot()} bridge — which is required when the underlying
+     * source is a non-Lucene indexer (e.g. {@link DataFormatAwareEngine}).
      */
     @ExperimentalApi
     @Override
     public GatedCloseable<CatalogSnapshot> acquireSnapshot() {
-        // TODO: Replace with a SegmentInfosCatalogSnapshot
-        // For now we throw an exception as this is not yet implemented
-        throw new UnsupportedOperationException("acquireSnapshot is not supported in EngineBackedIndexer");
+        return engine.acquireSnapshot();
+    }
+
+    @Override
+    public byte[] serializeSnapshotToRemoteMetadata(CatalogSnapshot catalogSnapshot) throws IOException {
+        if (catalogSnapshot instanceof SegmentInfosCatalogSnapshot sicSnapshot) {
+            ByteBuffersDataOutput out = new ByteBuffersDataOutput();
+            sicSnapshot.getSegmentInfos().write(new ByteBuffersIndexOutput(out, "Snapshot of SegmentInfos", "SegmentInfos"));
+            return out.toArrayCopy();
+        }
+        throw new IllegalStateException(
+            "EngineBackedIndexer expects SegmentInfosCatalogSnapshot but got: " + catalogSnapshot.getClass().getName()
+        );
     }
 
     @Override
