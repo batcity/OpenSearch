@@ -78,6 +78,7 @@ import org.opensearch.cluster.routing.RecoverySource;
 import org.opensearch.cluster.routing.RecoverySource.SnapshotRecoverySource;
 import org.opensearch.cluster.routing.ShardRouting;
 import org.opensearch.cluster.routing.ShardRoutingState;
+import org.opensearch.cluster.routing.UnassignedInfo;
 import org.opensearch.cluster.service.ClusterApplierService;
 import org.opensearch.common.Booleans;
 import org.opensearch.common.CheckedConsumer;
@@ -200,6 +201,7 @@ import org.opensearch.index.translog.RemoteBlobStoreInternalTranslogFactory;
 import org.opensearch.index.translog.RemoteFsTranslog;
 import org.opensearch.index.translog.RemoteTranslogStats;
 import org.opensearch.index.translog.Translog;
+import org.opensearch.index.translog.Translog.Durability;
 import org.opensearch.index.translog.TranslogConfig;
 import org.opensearch.index.translog.TranslogFactory;
 import org.opensearch.index.translog.TranslogRecoveryRunner;
@@ -6306,6 +6308,21 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     // Visible for testing
     AsyncShardFlushTask getPeriodicFlushTask() {
         return periodicFlushTask;
+    }
+
+    public FieldStats fieldStats() {
+        MapperService mapperService = this.mapperService();
+        if (mapperService == null || mapperService.documentMapper() == null) {
+            return new FieldStats(0, this.indexSettings().getValue(UnassignedInfo.INDEX_DELAYED_NODE_LEFT_TIMEOUT_SETTING) /* or get the exact limit setting */);
+        }
+        
+        // Calculate total fields currently mapped
+        long currentFieldsCount = mapperService.documentMapper().mappers().size();
+        
+        // Fetch the index mapping limit setting
+        long fieldsLimit = this.indexSettings().getAsLong("index.mapping.total_fields.limit", 1000L);
+        
+        return new FieldStats(currentFieldsCount, fieldsLimit);
     }
 
     /**

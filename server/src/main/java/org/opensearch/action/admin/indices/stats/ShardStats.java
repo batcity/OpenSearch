@@ -44,6 +44,7 @@ import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.index.engine.CommitStats;
 import org.opensearch.index.seqno.RetentionLeaseStats;
 import org.opensearch.index.seqno.SeqNoStats;
+import org.opensearch.index.shard.FieldStats;
 import org.opensearch.index.shard.ShardPath;
 import org.opensearch.indices.pollingingest.PollingIngestStats;
 
@@ -69,6 +70,8 @@ public class ShardStats implements Writeable, ToXContentFragment {
 
     @Nullable
     private PollingIngestStats pollingIngestStats;
+
+    private FieldStats fieldStats;
 
     /**
      * Gets the current retention lease stats.
@@ -112,6 +115,7 @@ public class ShardStats implements Writeable, ToXContentFragment {
         if (in.getVersion().onOrAfter(Version.V_3_0_0)) {
             pollingIngestStats = in.readOptionalWriteable(PollingIngestStats::new);
         }
+        this.fieldStats = in.readOptionalWriteable(FieldStats::new);
     }
 
     /**
@@ -126,7 +130,8 @@ public class ShardStats implements Writeable, ToXContentFragment {
         final CommitStats commitStats,
         final SeqNoStats seqNoStats,
         final RetentionLeaseStats retentionLeaseStats,
-        final PollingIngestStats pollingIngestStats
+        final PollingIngestStats pollingIngestStats,
+        final FieldStats fieldStats
     ) {
         this.shardRouting = routing;
         this.dataPath = shardPath.getRootDataPath().toString();
@@ -249,6 +254,7 @@ public class ShardStats implements Writeable, ToXContentFragment {
         if (out.getVersion().onOrAfter((Version.V_3_0_0))) {
             out.writeOptionalWriteable(pollingIngestStats);
         }
+        out.writeOptionalWriteable(fieldStats);
     }
 
     @Override
@@ -298,4 +304,7 @@ public class ShardStats implements Writeable, ToXContentFragment {
         static final String RELOCATING_NODE = "relocating_node";
     }
 
+    public FieldStats getFieldStats() {
+        return this.fieldStats;
+    }
 }

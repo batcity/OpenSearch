@@ -53,6 +53,7 @@ import org.opensearch.index.recovery.RecoveryStats;
 import org.opensearch.index.refresh.RefreshStats;
 import org.opensearch.index.search.stats.SearchStats;
 import org.opensearch.index.shard.DocsStats;
+import org.opensearch.index.shard.FieldStats;
 import org.opensearch.index.shard.IndexShard;
 import org.opensearch.index.shard.IndexingStats;
 import org.opensearch.index.store.StoreStats;
@@ -121,6 +122,8 @@ public class CommonStats implements Writeable, ToXContentFragment {
 
     @Nullable
     public RecoveryStats recoveryStats;
+
+    public FieldStats fieldStats;
 
     public CommonStats() {
         this(CommonStatsFlags.NONE);
@@ -416,6 +419,13 @@ public class CommonStats implements Writeable, ToXContentFragment {
         } else {
             recoveryStats.add(stats.getRecoveryStats());
         }
+
+        if (stats.getFieldStats() != null) {
+            long aggregatedCount = (this.fieldStats != null ? this.fieldStats.getFieldCount() : 0) + stats.getFieldStats().getFieldCount();
+            // Limit is identical across shards of the same index, so we take the max or standard value
+            long limit = stats.getFieldStats().getFieldLimit(); 
+            this.fieldStats = new FieldStats(aggregatedCount, limit);
+        }
     }
 
     @Nullable
@@ -498,6 +508,11 @@ public class CommonStats implements Writeable, ToXContentFragment {
         return recoveryStats;
     }
 
+    @Nullable
+    public FieldStats getFieldStats() {
+        return fieldStats;
+    }
+
     /**
      * Utility method which computes total memory by adding
      * FieldData, PercolatorCache, Segments (index writer, version map)
@@ -537,7 +552,8 @@ public class CommonStats implements Writeable, ToXContentFragment {
                 segments,
                 translog,
                 requestCache,
-                recoveryStats }
+                recoveryStats,
+                fieldStats }
         ).filter(Objects::nonNull);
         for (ToXContent toXContent : ((Iterable<ToXContent>) stream::iterator)) {
             toXContent.toXContent(builder, params);
