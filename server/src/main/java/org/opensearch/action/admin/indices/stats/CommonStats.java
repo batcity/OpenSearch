@@ -123,6 +123,7 @@ public class CommonStats implements Writeable, ToXContentFragment {
     @Nullable
     public RecoveryStats recoveryStats;
 
+    @Nullable
     public FieldStats fieldStats;
 
     public CommonStats() {

@@ -6318,7 +6318,6 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             return new FieldStats(0, fieldsLimit);
         }
 
-        // Call the instance method on mapperService instead of a static reference
         long currentFieldsCount = java.util.stream.StreamSupport
             .stream(mapperService.documentMapper().mappers().spliterator(), false)
             .filter(mapper -> !mapperService.isMetadataField(mapper.name()))
