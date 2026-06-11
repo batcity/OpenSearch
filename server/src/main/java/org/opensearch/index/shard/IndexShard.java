@@ -6318,10 +6318,11 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             return new FieldStats(0, fieldsLimit);
         }
 
-        // MappingLookup implements Iterable<Mapper>. 
-        // We can safely stream its public iterator elements to get the exact size.
+        // Filter out mappers that extend MetadataFieldMapper.
+        // This isolates user-defined fields from system metadata fields.
         long currentFieldsCount = java.util.stream.StreamSupport
             .stream(mapperService.documentMapper().mappers().spliterator(), false)
+            .filter(mapper -> !(mapper instanceof org.opensearch.index.mapper.MetadataFieldMapper))
             .count();
 
         return new FieldStats(currentFieldsCount, fieldsLimit);
