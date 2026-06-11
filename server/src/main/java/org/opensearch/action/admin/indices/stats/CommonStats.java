@@ -248,6 +248,8 @@ public class CommonStats implements Writeable, ToXContentFragment {
                 // shard is closed - no stats is fine
             }
         }
+
+        this.fieldStats = indexShard.fieldStats();
     }
 
     public CommonStats(StreamInput in) throws IOException {
@@ -267,6 +269,7 @@ public class CommonStats implements Writeable, ToXContentFragment {
         translog = in.readOptionalWriteable(TranslogStats::new);
         requestCache = in.readOptionalWriteable(RequestCacheStats::new);
         recoveryStats = in.readOptionalWriteable(RecoveryStats::new);
+        fieldStats = in.readOptionalWriteable(FieldStats::new);
     }
 
     @Override
@@ -287,6 +290,7 @@ public class CommonStats implements Writeable, ToXContentFragment {
         out.writeOptionalWriteable(translog);
         out.writeOptionalWriteable(requestCache);
         out.writeOptionalWriteable(recoveryStats);
+        out.writeOptionalWriteable(fieldStats);
     }
 
     public void add(CommonStats stats) {
@@ -421,10 +425,20 @@ public class CommonStats implements Writeable, ToXContentFragment {
         }
 
         if (stats.getFieldStats() != null) {
-            long aggregatedCount = (this.fieldStats != null ? this.fieldStats.getFieldCount() : 0) + stats.getFieldStats().getFieldCount();
-            // Limit is identical across shards of the same index, so we take the max or standard value
-            long limit = stats.getFieldStats().getFieldLimit(); 
-            this.fieldStats = new FieldStats(aggregatedCount, limit);
+            // Shards share the exact same mapping definitions. 
+            // Take the maximum value instead of adding them together to get the true per-index count.
+            long indexFieldCount = Math.max(
+                (this.fieldStats != null ? this.fieldStats.getFieldCount() : 0), 
+                stats.getFieldStats().getFieldCount()
+            );
+            
+            // Limits are also identical across shards of the same index, take the max.
+            long limit = Math.max(
+                (this.fieldStats != null ? this.fieldStats.getFieldLimit() : 0),
+                stats.getFieldStats().getFieldLimit()
+            ); 
+
+            this.fieldStats = new FieldStats(indexFieldCount, limit);
         }
     }
 

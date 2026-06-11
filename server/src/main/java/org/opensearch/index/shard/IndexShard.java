@@ -6312,16 +6312,18 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
 
     public FieldStats fieldStats() {
         MapperService mapperService = this.mapperService();
+        long fieldsLimit = this.indexSettings().getValue(MapperService.INDEX_MAPPING_TOTAL_FIELDS_LIMIT_SETTING);
+
         if (mapperService == null || mapperService.documentMapper() == null) {
-            return new FieldStats(0, this.indexSettings().getValue(UnassignedInfo.INDEX_DELAYED_NODE_LEFT_TIMEOUT_SETTING) /* or get the exact limit setting */);
+            return new FieldStats(0, fieldsLimit);
         }
-        
-        // Calculate total fields currently mapped
-        long currentFieldsCount = mapperService.documentMapper().mappers().size();
-        
-        // Fetch the index mapping limit setting
-        long fieldsLimit = this.indexSettings().getAsLong("index.mapping.total_fields.limit", 1000L);
-        
+
+        // MappingLookup implements Iterable<Mapper>. 
+        // We can safely stream its public iterator elements to get the exact size.
+        long currentFieldsCount = java.util.stream.StreamSupport
+            .stream(mapperService.documentMapper().mappers().spliterator(), false)
+            .count();
+
         return new FieldStats(currentFieldsCount, fieldsLimit);
     }
 
