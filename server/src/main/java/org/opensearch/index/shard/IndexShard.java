@@ -6318,10 +6318,8 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             return new FieldStats(0, fieldsLimit);
         }
 
-        long currentFieldsCount = java.util.stream.StreamSupport
-            .stream(mapperService.documentMapper().mappers().spliterator(), false)
-            .filter(mapper -> !mapperService.isMetadataField(mapper.name()))
-            .count();
+        // Highly optimized O(1) lookup
+        long currentFieldsCount = mapperService.getNonMetadataFieldCount();
 
         return new FieldStats(currentFieldsCount, fieldsLimit);
     }

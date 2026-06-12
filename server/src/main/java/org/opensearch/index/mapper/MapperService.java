@@ -253,6 +253,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
     private volatile Set<CompositeMappedFieldType> compositeMappedFieldTypes;
     private volatile Set<String> fieldsPartOfCompositeMappings;
     private volatile Set<String> nestedFieldsPartOfCompositeMappings;
+    private volatile long nonMetadataFieldCount = 0;
 
     public MapperService(
         IndexSettings indexSettings,
@@ -604,6 +605,20 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
 
         assert results.values().stream().allMatch(this::assertSerialization);
 
+        // --- ADD THIS BLOCK TO CACHE THE COUNT ---
+        if (this.mapper != null) {
+            long count = 0;
+            for (Mapper fieldMapper : this.mapper.mappers()) {
+                if (!isMetadataField(fieldMapper.name())) {
+                    count++;
+                }
+            }
+            this.nonMetadataFieldCount = count;
+        } else {
+            this.nonMetadataFieldCount = 0;
+        }
+        // -----------------------------------------
+
         // initialize composite fields post merge
         this.compositeMappedFieldTypes = getCompositeFieldTypesFromMapper();
         buildCompositeFieldLookup();
@@ -912,4 +927,10 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
         return reloadedAnalyzers;
     }
 
+    /**
+     * Returns the cached count of non-metadata fields in the current mapping.
+     */
+    public long getNonMetadataFieldCount() {
+        return this.nonMetadataFieldCount;
+    }
 }
