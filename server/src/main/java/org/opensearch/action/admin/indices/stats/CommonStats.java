@@ -183,6 +183,9 @@ public class CommonStats implements Writeable, ToXContentFragment {
                 case Recovery:
                     recoveryStats = new RecoveryStats();
                     break;
+                case FieldCount:
+                    fieldStats = new FieldStats();
+                    break;
                 default:
                     throw new IllegalStateException("Unknown Flag: " + flag);
             }
@@ -242,6 +245,9 @@ public class CommonStats implements Writeable, ToXContentFragment {
                     case Recovery:
                         recoveryStats = indexShard.recoveryStats();
                         break;
+                    case FieldCount:
+                        fieldStats = indexShard.fieldStats();
+                        break;
                     default:
                         throw new IllegalStateException("Unknown Flag: " + flag);
                 }
@@ -249,8 +255,6 @@ public class CommonStats implements Writeable, ToXContentFragment {
                 // shard is closed - no stats is fine
             }
         }
-
-        this.fieldStats = indexShard.fieldStats();
     }
 
     public CommonStats(StreamInput in) throws IOException {

@@ -15,6 +15,11 @@ public class FieldStats implements Writeable, ToXContentFragment {
     private final long fieldCount;
     private final long fieldLimit;
 
+    public FieldStats() {
+        this.fieldCount = 0;
+        this.fieldLimit = 0;
+    }
+
     public FieldStats(long fieldCount, long fieldLimit) {
         this.fieldCount = fieldCount;
         this.fieldLimit = fieldLimit;
